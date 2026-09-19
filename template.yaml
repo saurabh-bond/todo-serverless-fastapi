@@ -1,13 +1,13 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: A sample todo application using FastAPI + Mangum serverless stack
+Description: A sample todo application using FastAPI + Mangum serverless stack with Cognito authentication
 
 Parameters:
   Env:
     Type: String
     Default: dev
     AllowedValues: [dev, stage, prod]
-    
+
 Globals:
   Function:
     Timeout: 10
@@ -15,13 +15,13 @@ Globals:
     Runtime: python3.12
 
 Resources:
-  # 1. AWS HTTP API Gateway (Faster and cheaper than REST API)
+  # 1. AWS HTTP API Gateway
   FastAPIHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
       StageName: !Ref Env
-  
-  # 2. DynamoDB Database Table
+
+  # 2. DynamoDB table for todo records
   TodoDynamoDBTable:
     Type: AWS::Serverless::SimpleTable
     Properties:
@@ -30,23 +30,63 @@ Resources:
         Name: todo_id
         Type: String
 
-  # 3. AWS Lambda Compute function hosting FastAPI app
+  # 3. Cognito user pool for login and user authentication
+  TodoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${Env}-todo-serverless-user-pool"
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+
+  TodoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${Env}-todo-serverless-client"
+      UserPoolId: !Ref TodoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+
+  # 4. Lambda function hosting the FastAPI app
   FastAPILambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: .
-      Handler: src.main.handler # Points directly to main.py's Mangum Handler
+      Handler: src.main.handler
       Environment:
         Variables:
           ENVIRONMENT: !Ref Env
           DYNAMODB_TABLE: !Ref TodoDynamoDBTable
           STAGE_PATH: !Sub "/${Env}"
-      Policies: 
-        # Grants explicit CRUD access only to our specific DynamoDB environment table
+          COGNITO_USER_POOL_ID: !Ref TodoUserPool
+          COGNITO_APP_CLIENT_ID: !Ref TodoUserPoolClient
+          COGNITO_REGION: !Ref AWS::Region
+      Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TodoDynamoDBTable
+        - Statement:
+            Effect: Allow
+            Action:
+              - cognito-idp:SignUp
+              - cognito-idp:InitiateAuth
+            Resource: !GetAtt TodoUserPool.Arn
       Events:
-        # Catches ALL proxy traffic routing from HTTP API Gateway down to the FASTAPI routes
         ProxyRoute:
           Type: HttpApi
           Properties:
@@ -63,5 +103,11 @@ Resources:
 Outputs:
   ApiUrl:
     Description: "API Gateway public endpoint URL"
-    Value: !Sub "https://${FastAPIHttpApi}.execute-api.${AWS::Region}//${Env}/"
+    Value: !Sub "https://${FastAPIHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Env}/"
+  UserPoolId:
+    Description: "Cognito user pool ID"
+    Value: !Ref TodoUserPool
+  UserPoolClientId:
+    Description: "Cognito app client ID"
+    Value: !Ref TodoUserPoolClient
 

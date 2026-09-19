@@ -1,2 +1,4 @@
 # Backend sam build folder 
 .aws-sam
+src/__pycache__/
+__pycache__/

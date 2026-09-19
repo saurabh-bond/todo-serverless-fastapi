@@ -1,8 +1,8 @@
-import logging 
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
-from src.api.v1 import todo
+from src.api.v1 import todo, auth
 from src.config import settings
 
 
@@ -12,7 +12,7 @@ logger.setLevel(logging.INFO)
 app = FastAPI(
     title="Serverless Todo API",
     version="1.0.0",
-    root_path=settings.ROOT_PATH # Ensures API Gateway paths match gracefully
+    root_path=settings.ROOT_PATH or ""
 )
 
 # CORS configurations
@@ -25,11 +25,17 @@ app.add_middleware(
 )
 
 # Include API Routers
-app.include_router(todo.router, prefix="/app/v1/todos", tags=["Todos"])
+# Public Authentication Endpoints
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth Gateways"])
+
+# Protected Business Domain Logic Endpoints
+app.include_router(todo.router, prefix="/api/v1/todos", tags=["Protected Todo Workflows"])
+
 
 @app.get("/health", tags=["Health Check"])
 def health_check():
-    return {"status": "healthy", "environment": settings.ENV}
+    return {"status": "healthy", "environment": settings.ENVIRONMENT}
+
 
 # Mangum Handler that AWS Lambda targets
 handler = Mangum(app, lifespan="off")

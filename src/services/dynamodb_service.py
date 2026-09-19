@@ -1,3 +1,4 @@
+import os
 import boto3
 from botocore.exceptions import ClientError
 from fastapi import HTTPException, status
@@ -14,6 +15,7 @@ class TodoService:
             response = self.table.scan()
             return response.get("Items", [])
         except ClientError as e:
+            print(f"{e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Database error: {e.response['Error']['Message']}"
@@ -27,7 +29,7 @@ class TodoService:
                 "description": description,
                 "completed": False
             }
-            self.table.put_item(item=item)
+            self.table.put_item(Item=item)
             return item
         except ClientError as e:
             raise HTTPException(
