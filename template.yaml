@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: Serverless-2016-10-31
+Description: A sample todo application using FastAPI + Mangum serverless stack
+
+Parameters:
+  Env:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, stage, prod]
+    
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 128
+    Runtime: python3.12
+
+Resources:
+  # 1. AWS HTTP API Gateway (Faster and cheaper than REST API)
+  FastAPIHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Env
+  
+  # 2. DynamoDB Database Table
+  TodoDynamoDBTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: !Sub "${Env}-todos-table"
+      PrimaryKey:
+        Name: todo_id
+        Type: String
+
+  # 3. AWS Lambda Compute function hosting FastAPI app
+  FastAPILambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src.main.handler # Points directly to main.py's Mangum Handler
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Env
+          DYNAMODB_TABLE: !Ref TodoDynamoDBTable
+          STAGE_PATH: !Sub "/${Env}"
+      Policies: 
+        # Grants explicit CRUD access only to our specific DynamoDB environment table
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodoDynamoDBTable
+      Events:
+        # Catches ALL proxy traffic routing from HTTP API Gateway down to the FASTAPI routes
+        ProxyRoute:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            ApiId: !Ref FastAPIHttpApi
+        RootRoute:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: ANY
+            ApiId: !Ref FastAPIHttpApi
+
+Outputs:
+  ApiUrl:
+    Description: "API Gateway public endpoint URL"
+    Value: !Sub "https://${FastAPIHttpApi}.execute-api.${AWS::Region}//${Env}/"
+
