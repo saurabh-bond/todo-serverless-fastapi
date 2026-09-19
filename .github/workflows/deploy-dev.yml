@@ -37,9 +37,4 @@ jobs:
 
             - name: SAM Deploy to Dev Stage
               run: |
-                sam deploy \
-                    --stack-name dev-fastapi-todo-stack \
-                    --parameter-overrides Env=dev \
-                    --no-confirm-changeset \
-                    --no-fail-on-empty-changeset \
-                    --capabilities CAPABILITY_IAM
+                sam deploy --config-env dev --no-fail-on-empty-changeset
